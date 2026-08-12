@@ -190,6 +190,7 @@ export type {
   BuyerQualitySignal,
   CapTableBuyer,
   CapTableSummary,
+  TradeCoverage,
   TokenCapTableResponse,
   TokenBuyerQualityResponse,
   TokenRiskBand,

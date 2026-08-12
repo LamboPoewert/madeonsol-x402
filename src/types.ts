@@ -868,10 +868,27 @@ export interface CapTableSummary {
   signal:               BuyerQualitySignal;
 }
 
+/** Trade-coverage honesty block (v1.23.4). The trade tape starts 2026-04-12
+ *  (`history_start`, unix sec) and is launchpad-pipeline scoped (`scope`).
+ *  `in_scope`: `true` = persisted trades exist for the mint/wallet · `false` =
+ *  outside the write-gate (read zeros as "not covered", NOT "no activity") ·
+ *  `null` = probe unavailable. `note` explains the gap when `in_scope` is
+ *  `false`/`null`. Returned on keyed (v1) token/wallet intel endpoints and on
+ *  the x402 buyer-quality / top-traders mirrors; absent on other x402 mirrors
+ *  and on older cached responses. */
+export interface TradeCoverage {
+  history_start: number;
+  scope:         string;
+  in_scope?:     boolean | null;
+  note?:         string;
+}
+
 export interface TokenCapTableResponse {
   mint:    string;
   buyers:  CapTableBuyer[];
   summary: CapTableSummary;
+  /** v1.23.4 — trade-coverage disclosure (keyed route; absent on the x402 mirror and older cached responses). */
+  coverage?: TradeCoverage;
 }
 
 export interface TokenBuyerQualityResponse {
@@ -903,6 +920,8 @@ export interface TokenBuyerQualityResponse {
     recycled_early_buyer_count: number;
   };
   note?: string;
+  /** v1.23.4 — trade-coverage disclosure (absent on older cached responses). */
+  coverage?: TradeCoverage;
 }
 
 /* ── Token risk score (v1.13) ── */
@@ -995,6 +1014,8 @@ export interface TokenRiskResponse {
   score_version: string;
   /** v1.22 — deployer self-activity block. Present on single-mint GET /tokens/{mint}/risk (null = no pending_deploys row); absent on batch-risk entries. */
   dev?:          TokenRiskDev | null;
+  /** v1.23.4 — trade-coverage disclosure (keyed single-mint route only). Its `note` names the split: trade-derived sub-fields are launchpad-pipeline scoped, on-chain sub-fields are unaffected. */
+  coverage?:     TradeCoverage;
   as_of:         string;
 }
 
@@ -1161,6 +1182,8 @@ export interface TokenBundleResponse {
   mint:    string;
   bundle:  BundleSummary;
   wallets: BundleWallet[];
+  /** v1.23.4 — trade-coverage disclosure (keyed route; absent on older cached responses). */
+  coverage?: TradeCoverage;
 }
 
 /* ── Graduation events (token:graduations WS channel) ── */
@@ -2137,10 +2160,7 @@ export interface TokenTradesResponse {
     since:  number;
     until:  number;
   };
-  coverage: {
-    history_start: number;
-    scope:         string;
-  };
+  coverage: TradeCoverage;
 }
 
 /* ── Token top traders (v1.21) ── */
@@ -2194,6 +2214,9 @@ export interface TokenTopTradersResponse {
     known_alpha_wallets:  number;
     net_realized_pnl_sol: number;
   };
+  /** v1.23.4 — trade-coverage disclosure; when `in_scope` is false an empty
+   *  `traders` list means "outside the write-gate", not "nobody traded". */
+  coverage?: TradeCoverage;
 }
 
 /* ── Deshred sniper feed (v1.21) ── */
