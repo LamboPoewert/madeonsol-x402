@@ -369,6 +369,71 @@ export class MadeOnSolREST {
         return this.request("GET", `/deployer-hunter/${encodeURIComponent(wallet)}/trajectory`);
     }
     /**
+     * Ecosystem-wide deployer stats — how many deployers are tracked, how many
+     * signals fired today, and the chain-wide bond rate, plus a per-tier count.
+     * `GET /deployer-hunter/stats`
+     */
+    async deployerStats() {
+        return this.request("GET", "/deployer-hunter/stats");
+    }
+    /**
+     * Deployer reputation leaderboard, ranked by bonding rate, recent form,
+     * total bonded, or last deploy. Unranked deployers are excluded.
+     *
+     * Read `bonding_rate` (lifetime) against `recent_bond_rate` (rolling): a
+     * large gap is the signal, not either number alone. `runner_rate` only means
+     * something once `labeled_tokens >= 3`.
+     * `GET /deployer-hunter/leaderboard`
+     */
+    async deployerLeaderboard(params) {
+        return this.request("GET", "/deployer-hunter/leaderboard", undefined, params);
+    }
+    /**
+     * One deployer's profile — tier, lifetime and recent bond rates, totals,
+     * best-token peak MC, and `runner_rate` (share of labeled tokens that ran
+     * rather than dumped; gate on `labeled_tokens >= 3`). An untracked wallet
+     * returns a profile with zeroed counters, not a 404.
+     * `GET /deployer-hunter/{wallet}`
+     * @param wallet Deployer wallet (base58).
+     */
+    async deployerProfile(wallet) {
+        return this.request("GET", `/deployer-hunter/${encodeURIComponent(wallet)}`);
+    }
+    /**
+     * Every token deployed by one wallet, paginated, with deploy/bond timestamps,
+     * time-to-bond and peak MC. `GET /deployer-hunter/{wallet}/tokens`
+     * @param wallet Deployer wallet (base58).
+     */
+    async deployerTokens(wallet, params) {
+        return this.request("GET", `/deployer-hunter/${encodeURIComponent(wallet)}/tokens`, undefined, params);
+    }
+    /**
+     * Deployer alert volume over a lookback window, with bond-rate and
+     * MC-multiplier distributions broken out per tier — for sizing and
+     * monitoring your deployer-hunter usage.
+     * `GET /deployer-hunter/alert-stats`
+     */
+    async deployerAlertStats(params) {
+        return this.request("GET", "/deployer-hunter/alert-stats", undefined, params);
+    }
+    /**
+     * Best-performing recent tokens from ranked (non-unranked) deployers, by
+     * peak MC multiple over the alert price.
+     * `GET /deployer-hunter/best-tokens`
+     */
+    async deployerBestTokens(params) {
+        return this.request("GET", "/deployer-hunter/best-tokens", undefined, params);
+    }
+    /**
+     * Tokens from tracked deployers that just graduated to Raydium. Poll
+     * incrementally: pass the previous response's `next_since` back as `since`
+     * to get only what bonded after it.
+     * `GET /deployer-hunter/recent-bonds`
+     */
+    async deployerRecentBonds(params) {
+        return this.request("GET", "/deployer-hunter/recent-bonds", undefined, params);
+    }
+    /**
      * A deployer's daily reputation time-series — backtest "was this deployer elite
      * when it launched token X?" without look-ahead bias. Each snapshot carries the
      * `tier`, `is_tracked` flag, and that day's cumulative `total_deployed` /

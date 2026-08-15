@@ -2409,3 +2409,232 @@ export interface DeployerHistoryResponse {
   wallet:      string;
   snapshots:   DeployerHistorySnapshot[];
 }
+
+/* ── Deployer Hunter: reputation, leaderboard, outcomes ──
+ *
+ * "Bonding" is the pump.fun graduation event. `bonding_rate` is lifetime,
+ * `recent_bond_rate` is the rolling recent window — a deployer can have a
+ * strong lifetime rate and a collapsing recent one, which is the whole point
+ * of tracking both. `runner_rate` needs `labeled_tokens >= 3` before it means
+ * anything; below that it is one or two tokens of noise.
+ */
+
+/** Reputation grade. `unranked` = too few deploys to grade, not "bad". */
+export type DeployerTier = "elite" | "good" | "rising" | "neutral" | "spammer" | "unranked";
+
+export interface DeployerTierCounts {
+  elite:  number;
+  good:   number;
+  rising: number;
+}
+
+/** Ecosystem-wide deployer stats. `GET /deployer-hunter/stats` */
+export interface DeployerStatsResponse {
+  tracked_count:  number;
+  signals_today:  number;
+  bonds_detected: number;
+  bond_rate:      number;
+  tiers:          DeployerTierCounts;
+}
+
+export interface DeployerLeaderboardParams {
+  /** Restrict to one grade. */
+  tier?:   DeployerTier;
+  /** Default `bonding_rate`. */
+  sort?:   "bonding_rate" | "recent" | "total_bonded" | "last_deploy";
+  /** 1–100, default 20. */
+  limit?:  number;
+  /** Default 0. */
+  offset?: number;
+}
+
+export interface DeployerLeaderboardEntry {
+  id:                     string;
+  wallet_address:         string;
+  tier:                   DeployerTier;
+  /** Lifetime share of deploys that bonded. */
+  bonding_rate:           number;
+  /** Rolling recent-window bond rate — diverges from lifetime when form changes. */
+  recent_bond_rate:       number;
+  total_tokens_deployed:  number;
+  total_bonded:           number;
+  last_deploy_at?:        string | null;
+  recent_outcomes?:       string | null;
+  avg_time_to_bond_minutes?: number | null;
+  /** Share of labeled tokens that ran (peak ≥60min after deploy) rather than dumped. */
+  runner_rate?:           number | null;
+  /** Confidence denominator for `runner_rate` — gate on ≥3. */
+  labeled_tokens?:        number | null;
+  best_token_peak_mc?:    number | null;
+  avg_peak_mc?:           number | null;
+  last_bond_at?:          string | null;
+  is_tracked?:            boolean | null;
+  label?:                 string | null;
+  first_seen_at?:         string | null;
+}
+
+/** `GET /deployer-hunter/leaderboard` — excludes unranked deployers. */
+export interface DeployerLeaderboardResponse {
+  deployers: DeployerLeaderboardEntry[];
+  total:     number;
+  limit:     number;
+  offset:    number;
+  has_more:  boolean;
+}
+
+export interface DeployerToken {
+  mint:                 string;
+  name:                 string | null;
+  symbol:               string | null;
+  bonded:               boolean;
+  deployed_at:          string;
+  bonded_at:            string | null;
+  peak_market_cap_usd:  number | null;
+}
+
+/** `GET /deployer-hunter/{wallet}` — unknown wallets return a profile, not a 404. */
+export interface DeployerProfileResponse {
+  wallet:            string;
+  tier:              DeployerTier;
+  bonding_rate:      number;
+  recent_bond_rate:  number;
+  total_deployed:    number;
+  total_bonded:      number;
+  last_deploy_at:    string | null;
+  first_seen:        string | null;
+  runner_rate?:      number | null;
+  /** Gate `runner_rate` on this being ≥3. */
+  labeled_tokens?:   number | null;
+  avg_time_to_bond_minutes?: number | null;
+  tokens?:           DeployerToken[] | null;
+}
+
+export interface DeployerTokensParams {
+  /** 1–100, default 50. */
+  limit?:       number;
+  /** Default 0. */
+  offset?:      number;
+  /** Default false. */
+  only_bonded?: boolean;
+}
+
+/** `GET /deployer-hunter/{wallet}/tokens` */
+export interface DeployerTokensResponse {
+  tokens: DeployerToken[];
+  count:  number;
+  total:  number;
+}
+
+export interface DeployerAlertStatsParams {
+  /** Lookback window, e.g. `24h`, `7d`, `30d`. */
+  period?: string;
+}
+
+export interface BondRateStats {
+  total_deploys: number;
+  total_bonded:  number;
+  rate:          number;
+}
+
+export interface MultiplierStats {
+  total_with_mc:   number;
+  pct_2x:          number;
+  pct_5x:          number;
+  pct_10x:         number;
+  pct_50x:         number;
+  avg_multiplier:  number;
+  best_multiplier: number;
+}
+
+export interface DeployerTierStats {
+  deploys:         number;
+  bonded:          number;
+  bond_rate:       number;
+  avg_multiplier?: number | null;
+  total_with_mc:   number;
+}
+
+/** `GET /deployer-hunter/alert-stats` — size and monitor your alert usage. */
+export interface DeployerAlertStatsResponse {
+  bond_rate:  BondRateStats;
+  multiplier: MultiplierStats;
+  /** Keyed by tier name. */
+  tiers:      Record<string, DeployerTierStats>;
+  period:     string;
+}
+
+export interface BestTokensParams {
+  /** Lookback window, default `7d`. */
+  period?: string;
+  /** Default 5. */
+  limit?:  number;
+}
+
+export interface BestToken {
+  id:                     string;
+  token_mint:             string;
+  token_name?:            string | null;
+  token_symbol?:          string | null;
+  token_image_url?:       string | null;
+  bonded_at:              string;
+  peak_market_cap?:       number | null;
+  mc_at_bond?:            number | null;
+  market_cap_at_alert?:   number | null;
+  mc_multiplier?:         number | null;
+  deployer_wallet:        string;
+  deployer_tier:          DeployerTier;
+  alerted_at?:            string | null;
+}
+
+/** `GET /deployer-hunter/best-tokens` — ranked (non-unranked) deployers only. */
+export interface BestTokensResponse {
+  tokens: BestToken[];
+  period: string;
+  limit:  number;
+}
+
+export interface RecentBondsParams {
+  /** 1–100, default 20. */
+  limit?:       number;
+  /** Incremental-polling cursor — pass the previous `next_since`. */
+  since?:       string;
+  tier?:        DeployerTier;
+  /** Floor on peak market cap (USD). */
+  peak_mc_min?: number;
+}
+
+export interface DeployerSummary {
+  wallet_address:            string;
+  tier:                      DeployerTier;
+  bonding_rate?:             number | null;
+  total_bonded?:             number | null;
+  recent_outcomes?:          string | null;
+  recent_bond_rate?:         number | null;
+  total_tokens_deployed?:    number | null;
+  best_token_peak_mc?:       number | null;
+  runner_rate?:              number | null;
+  labeled_tokens?:           number | null;
+  avg_time_to_bond_minutes?: number | null;
+}
+
+export interface RecentBond {
+  id:                     string;
+  token_mint:             string;
+  token_name?:            string | null;
+  token_symbol?:          string | null;
+  token_image_url?:       string | null;
+  deployed_at:            string;
+  bonded_at:              string;
+  time_to_bond_minutes?:  number | null;
+  peak_market_cap?:       number | null;
+  mc_at_bond?:            number | null;
+  deployers:              DeployerSummary;
+}
+
+/** `GET /deployer-hunter/recent-bonds` — tokens from tracked deployers that graduated. */
+export interface RecentBondsResponse {
+  tokens: RecentBond[];
+  limit:  number;
+  /** Pass back as `since` to fetch only newer bonds. */
+  next_since?: string | null;
+}
