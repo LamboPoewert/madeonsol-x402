@@ -534,7 +534,11 @@ export class MadeOnSolX402 {
   /**
    * Cursor-paginated raw trades for any wallet. Filter by action / token_mint /
    * since-until. Default limit 100, max 500. Cursor is stable across DESC
-   * pagination. **x402: $0.005**
+   * pagination. Since 2026-08-16 each trade also carries `price_sol`/`price_usd`
+   * (that trade's executed price, `sol_amount / token_amount`) and
+   * `market_price_sol`/`market_price_usd` (canonical pool price near its slot) —
+   * this route previously returned amounts and no price at all.
+   * **x402: $0.005**
    */
   async walletTrades(address: string, params?: WalletTradesParams): Promise<WalletTradesResponse> {
     return this.request(`/api/x402/wallet/${encodeURIComponent(address)}/trades`,
@@ -1382,7 +1386,13 @@ export class MadeOnSolREST {
    * paginated newest first (`GET /tokens/{mint}/trades`). Filter by `action`,
    * `wallet`, and a `since`/`until` unix-seconds window; unlike `walletTrades`
    * (90-day default), the default window here is the FULL history. Each trade
-   * carries `price_sol`/`price_usd`, `early_buyer_rank`, and `slot`. The
+   * carries `price_sol`/`price_usd` — THIS trade's executed price, i.e.
+   * `sol_amount / token_amount`, the trader's all-in effective rate including
+   * swap fee and any account rent — plus `market_price_sol`/`market_price_usd`
+   * (the canonical pool price sampled near that slot, shared by every trade in
+   * it), `early_buyer_rank`, and `slot`. Use the first pair for cost basis and
+   * PnL, the second for a per-token series. Before 2026-08-16 `price_sol` was
+   * the canonical value and disagreed with the row's own amounts. The
    * `coverage` block is the honesty marker: history starts 2026-04-12
    * (`history_start`) and capture is pump.fun-pipeline scoped (`scope`).
    * PRO/ULTRA only — BASIC receives HTTP 403.
