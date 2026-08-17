@@ -21,7 +21,9 @@ export type StreamChannel =
   | "copytrade:signals"
   | "price_alert:events"
   | "sniper:deploys"
-  | "token:graduations";
+  | "token:graduations"
+  | "token:locks"
+  | "token:fee_claims";
 
 /** Event names delivered on those channels (subscribe to a channel, receive these). */
 export type StreamEventName =
@@ -35,7 +37,9 @@ export type StreamEventName =
   | "price_alert:dip"
   | "price_alert:recovery"
   | "sniper:deploy"
-  | "token:graduation";
+  | "token:graduation"
+  | "token:lock"
+  | "token:fee_claim";
 
 /** Lifecycle events you can also listen for. */
 export type StreamLifecycleEvent =

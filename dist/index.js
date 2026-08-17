@@ -646,6 +646,112 @@ export class MadeOnSolREST {
         return this.request("GET", `/tokens/${encodeURIComponent(mint)}/holders`);
     }
     /**
+     * v1.27 — Token locks & vesting on a mint: every on-chain Streamflow stream,
+     * Jupiter Lock vesting escrow and Bonfida token-vesting contract, decoded from
+     * the locker programs' account state. `GET /tokens/{mint}/locks`.
+     * Each row carries the schedule (start / cliff / period / end, cliff and
+     * per-period amounts), the terms (`cancelable_by_sender` — funds are locked
+     * against the RECIPIENT, not the locker; `transferable`, `can_topup`) and a
+     * LIVE-derived view computed at request time: `locked_raw` (still locked),
+     * `unlocked`, `withdrawn`, `claimable`, `status` and `next_unlock`. `summary`
+     * rolls up locked / deposited totals (raw + ui + usd + % of supply), the 7d /
+     * 30d forward unlock schedule, the nearest next unlock and how many active
+     * contracts the sender can still cancel. Answers "did the team lock, how much,
+     * until when, and can they pull it".
+     * - `*_raw` amounts are base-unit STRINGS; ui / usd / pct fields are null when
+     *   decimals / price are unknown (`token.facts_resolved`).
+     * - **LP locks are NOT included** — this is token / vesting locks only.
+     * - `status` / `program` filter `locks[]` only; the summary always covers all rows.
+     * **KEYED (v1) — requires an `msk_` API key; there is no x402 route.** PRO+ —
+     * BASIC receives HTTP 403.
+     */
+    async tokenLocks(mint, params) {
+        return this.request("GET", `/tokens/${encodeURIComponent(mint)}/locks`, undefined, params);
+    }
+    /**
+     * v1.27 — Cross-token feed of NEW lock / vesting contracts, newest first —
+     * who just locked tokens, of what mint, how much, until when — from Streamflow,
+     * Jupiter Lock and Bonfida vesting. `GET /tokens/locks`. Each row is the same
+     * live-derived contract as {@link tokenLocks} plus `token` (symbol, decimals,
+     * price, MC). Poll incrementally with `since = pagination.next_since`, page back
+     * with `before = pagination.next_before`, or subscribe to the **`token:locks`**
+     * WS channel (event `token:lock`) for a push the moment the contract lands
+     * on-chain. `min_usd` / `min_pct_of_supply` / `status` post-filter (×4
+     * over-fetch, so a page may be shorter than `limit`). Backfilled Jupiter Lock
+     * rows have no on-chain creation time and are excluded unless
+     * `include_estimated: true`. LP locks are NOT included. **KEYED (v1) — no x402
+     * route.** PRO+ — BASIC receives HTTP 403.
+     */
+    async tokenLocksFeed(params) {
+        const q = {};
+        if (params) {
+            for (const [k, v] of Object.entries(params)) {
+                if (v === undefined || v === null)
+                    continue;
+                q[k] = typeof v === "boolean" ? (v ? "1" : "0") : v;
+            }
+        }
+        return this.request("GET", "/tokens/locks", undefined, q);
+    }
+    /**
+     * v1.27 — Upcoming unlock EVENTS across all active lock / vesting contracts
+     * inside a window (`within`: 1h | 6h | 24h | 3d | 7d (default) | 14d | 30d |
+     * 90d) — which tokens have locked supply hitting the market, how much, from
+     * whose lock. `GET /tokens/unlocks`. One entry per active contract = its NEXT
+     * unlock event in the window (`event`: cliff | period | final | tranche) with
+     * `amount_*`, plus `window_amount_*` = that contract's total release over the
+     * whole window. Continuous per-second streams (Streamflow payroll) contribute
+     * only their cliff / final events. `sort`: soonest (default) | largest_usd |
+     * largest_pct. Base-unit amounts are STRINGS; usd / pct null when the price /
+     * supply is unknown (implied MC > $100B is treated as phantom → usd null).
+     * LP locks are NOT included. **KEYED (v1) — no x402 route.** PRO+ — BASIC
+     * receives HTTP 403.
+     */
+    async tokenUnlocks(params) {
+        return this.request("GET", "/tokens/unlocks", undefined, params);
+    }
+    /**
+     * v1.27 — pump.fun creator-fee sharing on a coin: who its creator fees are
+     * redirected to. `GET /tokens/{mint}/fee-shares`. Decodes the on-chain
+     * `SharingConfig` (pump_fees PDA `["sharing-config", mint]`): `admin`, `status`,
+     * each shareholder's `share_bps` with `is_admin` / `is_social_pda` (a
+     * SocialFeePda = fees earmarked for a platform identity — platform 2 = X,
+     * `social.user_id` is the platform-native numeric id, NOT the handle — with its
+     * lifetime claimed), `redirected_bps` (share going to non-admin addresses),
+     * `social_bps` and `is_default` (100% to the creator — a real answer, pump
+     * creates one config per coin). Plus `distributions` (every
+     * `distribute_creator_fees` payout, pro-rata per shareholder; per-recipient
+     * received totals; past recipients no longer in the split), `history` (config
+     * created / updated / reset, creator transferred) and `recent_distributions`.
+     * `config.source` is `stream` (our table — only NON-default configs are stored)
+     * or `chain` (live PDA read; `config_error` set and `config` null if every RPC
+     * endpoint failed). Amounts are quote base units (SOL lamports unless a
+     * stable-quoted coin) as STRINGS. **Event / distribution history starts
+     * 2026-08-17.** **KEYED (v1) — no x402 route.** PRO+ — BASIC receives HTTP 403.
+     */
+    async tokenFeeShares(mint) {
+        return this.request("GET", `/tokens/${encodeURIComponent(mint)}/fee-shares`);
+    }
+    /**
+     * v1.27 — pump.fun fee-event feed, newest first. `GET /tokens/fee-claims`.
+     * Event `type`s: `distribution` (creator fees paid out pro-rata to the
+     * SharingConfig shareholders — fees redirected to others — with `payouts[]`
+     * per address), `social_claim` (fees earmarked for a platform identity — 2 = X
+     * — claimed to a `recipient` wallet), `shares_created` / `shares_updated` /
+     * `shares_reset` (config changes), `creator_transferred` and `creator_claim`
+     * (the plain creator vault claim — per creator, carries NO mint; excluded
+     * unless you ask for it via `type`). Default 100%-to-creator configs and
+     * zero-amount distributions are not stored. Filters: `type` (comma list),
+     * `mint`, `recipient`, `actor`, `social_platform`, `social_user_id`, `min_sol`;
+     * poll with `since = pagination.next_since` or subscribe to the
+     * **`token:fee_claims`** WS channel (event `token:fee_claim`). Amounts are quote
+     * base units as STRINGS + `amount` / `amount_usd`. **History starts
+     * 2026-08-17.** **KEYED (v1) — no x402 route.** PRO+ — BASIC receives HTTP 403.
+     */
+    async tokenFeeClaims(params) {
+        return this.request("GET", "/tokens/fee-claims", undefined, params);
+    }
+    /**
      * Bulk token rug-risk/safety scoring — up to 50 mints in one call (counts as 1
      * request against quota). Each entry in `tokens` is either a full risk result
      * (same shape as {@link tokenRisk}, plus `as_of`) or `{ mint, error: "not_tracked" }`
