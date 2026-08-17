@@ -613,6 +613,39 @@ export class MadeOnSolREST {
         return this.request("GET", `/tokens/${encodeURIComponent(mint)}/depth`, undefined, params?.sizes && params.sizes.length > 0 ? { sizes: params.sizes.join(",") } : undefined);
     }
     /**
+     * Live holder census + concentration for a token — who holds NOW (as opposed
+     * to {@link tokenCapTable}, who bought first). `GET /tokens/{mint}/holders`.
+     * Read live from the ledger at `confirmed`: every token account of the mint
+     * (mint-scoped `getProgramAccounts`), merged per owner. Hard truths the payload
+     * states rather than hides:
+     * - `concentration.holder_count` is EXACT (distinct non-zero owners minus the
+     *   excluded pools/curves/burns). It is null ONLY when the provider refuses the
+     *   census for a mega-cap (TRUMP/JUP/BONK class) — then `source.method` is
+     *   `"getTokenLargestAccounts"`, `source.census_fallback_reason` is set and only
+     *   the top-20 view is served. Never estimated from trades.
+     * - Each disclosed owner carries `labels` from MadeOnSol wallet intelligence
+     *   (`deployer` / `kol` / `early_buyer` / `buyer` / `bundle` / `bot` /
+     *   `dump_cluster`); an empty `labels` array = unknown to us, NOT verified clean.
+     * - Liquidity pools, bonding curves, vaults and burns are EXCLUDED from the
+     *   circulating denominator and NAMED in `excluded[]` (`reason`: `pool` + `dex` +
+     *   `pool_address` | `bonding_curve` | `burn` | `program_account`);
+     *   `concentration` splits them into `pool_pct` / `burned_pct` / `program_pct`
+     *   (over TOTAL supply) while `top1/10/20/50/100_share` and the label `*_pct`
+     *   fields are over circulating.
+     * - `amount_raw`, `supply_raw`, `circulating_raw` are raw u64 STRINGS — never floats.
+     * - Disclosure is tier-gated: PRO ranks 1–10, ULTRA 1–50, BUSINESS 1–100; the
+     *   concentration maths is tier-independent.
+     * Large established tokens take 5–30 s to enumerate upstream: the first call may
+     * reject with HTTP 503 `error_kind: "holder_scan_in_progress"`
+     * (`retry_after_seconds: 20`) — the scan keeps running and is cached, so retrying
+     * ~20 s later is instant. 404 `not_a_mint` = not a mint on-chain; 503
+     * `holder_rpc_unavailable` (retry 15 s) = fail-closed. **KEYED (v1) — requires an
+     * `msk_` API key; there is no x402 route.** PRO+ — BASIC receives HTTP 403.
+     */
+    async tokenHolders(mint) {
+        return this.request("GET", `/tokens/${encodeURIComponent(mint)}/holders`);
+    }
+    /**
      * Bulk token rug-risk/safety scoring — up to 50 mints in one call (counts as 1
      * request against quota). Each entry in `tokens` is either a full risk result
      * (same shape as {@link tokenRisk}, plus `as_of`) or `{ mint, error: "not_tracked" }`

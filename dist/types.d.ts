@@ -2141,6 +2141,117 @@ export interface TokenDepthResponse {
     unsupported_pools: TokenDepthUnsupportedPool[];
     note?: string;
 }
+/** Wallet-intelligence labels on a holder. Empty = unknown to us, NOT verified clean. */
+export type TokenHolderLabel = "deployer" | "kol" | "early_buyer" | "buyer" | "bundle" | "bot" | "dump_cluster";
+/** One ranked holder (owner wallet, token accounts merged). */
+export interface TokenHolder {
+    rank: number;
+    /** Owner wallet of the token account(s). */
+    owner: string;
+    token_accounts: string[];
+    /** Raw u64 balance as a decimal STRING — never a float. */
+    amount_raw: string;
+    /** Decimal-adjusted convenience value (null when decimals unknown). */
+    amount: number | null;
+    pct_of_supply: number | null;
+    /** Share of supply minus pools / bonding curves / burns. */
+    pct_of_circulating: number | null;
+    labels: TokenHolderLabel[];
+    kol_name: string | null;
+    early_buyer_rank: number | null;
+    bot_confidence: "none" | "low" | "medium" | "high" | null;
+    historical_win_rate: number | null;
+}
+/**
+ * An owner EXCLUDED from the circulating denominator, named where we can:
+ * `pool` = vault authority of a known pool (`dex` + `pool_address` set);
+ * `bonding_curve` = pump.fun / LaunchLab curve; `burn` = incinerator / system program;
+ * `program_account` = off-curve owner we could not attribute (vault, escrow, staking, unknown pool).
+ */
+export interface TokenHolderExcluded {
+    owner: string;
+    token_accounts: string[];
+    /** Raw u64 as a STRING. */
+    amount_raw: string;
+    pct_of_supply: number | null;
+    reason: "pool" | "bonding_curve" | "burn" | "program_account";
+    dex: string | null;
+    pool_address: string | null;
+}
+/** Concentration over the FULL owner set (tier governs disclosure only). */
+export interface TokenHoldersConcentration {
+    /**
+     * EXACT distinct non-zero owners minus excluded pools/curves/burns, at `slot`
+     * (census). null ONLY when the provider refused the census for a mega-cap
+     * (see `source.census_fallback_reason`) — never estimated from trades.
+     */
+    holder_count: number | null;
+    holder_count_source: "census" | null;
+    token_accounts_nonzero: number | null;
+    /** Raw u64 as STRINGS. */
+    supply_raw: string | null;
+    circulating_raw: string | null;
+    decimals: number | null;
+    /** Shares over the circulating denominator (supply minus excluded). top50/top100 are null on the top-20 fallback. */
+    top1_share: number | null;
+    top10_share: number | null;
+    top20_share: number | null;
+    top50_share: number | null;
+    top100_share: number | null;
+    /** Share of TOTAL supply in pools/curves/vaults/burns (= pool_pct + burned_pct + program_pct). */
+    pool_and_program_pct: number | null;
+    /** Share of total supply in NAMED pools + bonding curves. */
+    pool_pct: number | null;
+    burned_pct: number | null;
+    /** Share of total supply held by off-curve owners we could not attribute. */
+    program_pct: number | null;
+    deployer_pct: number | null;
+    kol_pct: number | null;
+    early_buyer_pct: number | null;
+    bundle_pct: number | null;
+    bot_pct: number | null;
+    dump_cluster_pct: number | null;
+    distinct_owners_in_top20: number;
+    /** How many ranked owners the scan retained (≤100 census, ≤20 fallback). */
+    ranked_owners_available: number;
+}
+/**
+ * Live holder census + concentration for a Solana mint (GET /tokens/{mint}/holders) —
+ * who holds NOW, as opposed to {@link TokenCapTableResponse} (who bought first).
+ * Read live from the ledger at `confirmed` via a mint-scoped `getProgramAccounts`
+ * census merged per owner. Disclosure: PRO ranks 1–10, ULTRA 1–50, BUSINESS 1–100;
+ * the maths is tier-independent. Big established tokens may first answer HTTP 503
+ * `error_kind: "holder_scan_in_progress"` (`retry_after_seconds: 20`) — the scan
+ * continues and is cached, so the retry is instant. **KEYED (v1) only — not on the
+ * x402 rail.** PRO+.
+ */
+export interface TokenHoldersResponse {
+    mint: string;
+    /** Ledger slot the holder set was read at. */
+    slot: number | null;
+    as_of: string;
+    holders: TokenHolder[];
+    count: number;
+    /** Rank cap by tier: 10 PRO, 50 ULTRA, 100 BUSINESS. */
+    disclosed: number;
+    excluded: TokenHolderExcluded[];
+    concentration: TokenHoldersConcentration;
+    deployer: {
+        wallet: string;
+        tier: string;
+        bonding_rate: number | null;
+    } | null;
+    source: {
+        method: "getProgramAccounts_census" | "getTokenLargestAccounts";
+        token_program: string | null;
+        rpc_cap: number;
+        commitment: string;
+        scan_ms: number | null;
+        /** Set when the provider refused the census and the top-20 view was served instead. */
+        census_fallback_reason: string | null;
+        note: string;
+    };
+}
 /** One daily reputation snapshot for a deployer wallet. */
 export interface DeployerHistorySnapshot {
     date: string;
