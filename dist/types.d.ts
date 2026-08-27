@@ -413,7 +413,14 @@ export interface WebhookTestResult {
 }
 export interface StreamToken {
     token: string;
-    expires_at: string;
+    /** Always `null` since 2026-08-27 — stream tokens never expire. Kept for wire compatibility; do not schedule refreshes on it. */
+    expires_at: string | null;
+    /** Always `null` since 2026-08-27 — the server never rotates a token on its own. Kept for wire compatibility. */
+    next_refresh_at?: string | null;
+    /** `true` when this call replaced your previous token (`rotate: true`); the old value keeps working for 60 s. */
+    rotated?: boolean;
+    /** Human-readable lifetime statement ("This token does not expire. …"). */
+    lifetime?: string;
     ws_url: string;
     /** DEX trade stream URL — only present for Ultra tier subscribers */
     dex_ws_url?: string;

@@ -2,8 +2,10 @@
  * Real-time WebSocket streaming client.
  *
  * Wraps the connect → token → subscribe → event loop with auto-reconnect,
- * 24h-token auto-refresh, heartbeat liveness, and typed events, so consumers
- * never hand-roll connection management. Obtain one via `client.stream()`.
+ * heartbeat liveness, and typed events, so consumers never hand-roll
+ * connection management. Obtain one via `client.stream()`. Stream tokens do
+ * not expire: `getToken()` is called on every (re)connect and returns the
+ * same value until the subscription lapses or you explicitly rotate it.
  *
  * Works in Node (uses the global `WebSocket` on Node 22+, else lazily imports
  * the optional `ws` package) and the browser (native WebSocket). Zero required
@@ -23,7 +25,8 @@ export interface StreamEvent<T = unknown> {
     ts: number;
 }
 export interface StreamClientOptions {
-    /** Returns a fresh 24h stream token (the SDK wires this to getStreamToken()). */
+    /** Returns your stream token (the SDK wires this to getStreamToken()). Called on every
+     *  (re)connect; the token does not expire, so it returns the same value each time. */
     getToken: () => Promise<StreamToken>;
     /** Reconnect automatically on drop (default: true). */
     autoReconnect?: boolean;

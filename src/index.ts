@@ -966,13 +966,23 @@ export class MadeOnSolREST {
       opts?.limit !== undefined ? { limit: opts.limit } : undefined);
   }
 
-  /** Generate a 24h WebSocket streaming token. */
-  async getStreamToken(): Promise<StreamToken> {
-    return this.request("POST", "/stream/token");
+  /**
+   * Issue your WebSocket streaming token. Stream tokens never expire (since
+   * 2026-08-27): every call returns the same token until your subscription
+   * lapses or you pass `{ rotate: true }`, which replaces it (the previous
+   * value keeps working for 60 s). `expires_at` / `next_refresh_at` are always
+   * `null` — the server never rotates on its own and never sends
+   * `token_refresh` unless you rotated. A `4001` close means "mint again"
+   * (lapsed or rotated), never a timer. Authenticate the handshake with
+   * `Authorization: Bearer <token>` (`?token=` still works, masked in logs).
+   */
+  async getStreamToken(opts?: { rotate?: boolean }): Promise<StreamToken> {
+    return this.request("POST", "/stream/token", opts?.rotate ? { rotate: true } : undefined);
   }
 
   /**
-   * Open a managed real-time WebSocket stream. Handles token fetch + refresh,
+   * Open a managed real-time WebSocket stream. Handles the token fetch (the
+   * token does not expire; `getStreamToken()` is called on every (re)connect),
    * auto-reconnect with backoff, heartbeat liveness, and typed events for you.
    *
    * @example

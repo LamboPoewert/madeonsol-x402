@@ -11,6 +11,8 @@ TypeScript SDK for the [MadeOnSol](https://madeonsol.com) Solana KOL intelligenc
 
 > Real-time Solana trading intelligence: track 1,069 KOL wallets with <3s latency, score 23,000+ Pump.fun deployers, surface deshred deploy signals ~500ms before on-chain confirmation, score 1M+ early-buyer wallets (incl. dump-cluster detection), read bundle-cohort holdings (`held_pct_of_supply` — are the bundlers still holding?), verify any wallet's current on-chain holdings (with airdrop/insider `transfer_delta` detection), push every pump.fun graduation, and stream every DEX trade. Free tier: 200 requests/day, every endpoint — no signup payment. Get a key at [madeonsol.com/pricing](https://madeonsol.com/pricing).
 
+> **New in 1.27.1 — stream tokens never expire.** `POST /stream/token` (`rest.getStreamToken()`) now returns the **same token on every call, forever**. It stops working only if your subscription lapses or you call `rest.getStreamToken({ rotate: true })` to replace it (the previous value keeps working for 60 s). `StreamToken.expires_at` and the new `next_refresh_at` are always `null` (kept for wire compatibility — do not schedule refreshes on them); the response gains `rotated: boolean` and `lifetime: string`. The server never rotates on its own and never sends `token_refresh` unless you rotated; a `4001` close means "mint again" (lapsed or rotated), never a timer. Prefer `Authorization: Bearer <token>` on the WebSocket handshake — `?token=` still works and is masked in access logs. `rest.stream()` already does the right thing (it calls `getStreamToken()` on every (re)connect); no code change needed on your side.
+
 > **New in 1.27.0 — token locks & vesting, upcoming unlocks, and pump.fun creator-fee sharing / fee claims — five endpoints + two live channels.** `rest.tokenLocks(mint, params?)` (typed `TokenLocksResponse`) binds `GET /tokens/{mint}/locks`: every on-chain Streamflow / Jupiter Lock / Bonfida lock or vesting contract on a mint, decoded from the locker programs' account state, with a LIVE-derived view (`locked_raw` still locked, `unlocked`, `withdrawn`, `claimable`, `status`, `next_unlock`) and a `summary` (locked / deposited totals, the 7d / 30d forward unlock schedule, `active_cancelable_by_sender` — a lock the sender can cancel is a weaker promise). `rest.tokenLocksFeed(params?)` (`GET /tokens/locks`) is the cross-token feed of NEW contracts, cursor-paginated (`pagination.next_since` / `next_before`) and pushed live on the new **`token:locks`** WS channel (event `token:lock`, typed `TokenLockStreamEvent`). `rest.tokenUnlocks(params?)` (`GET /tokens/unlocks`) lists upcoming unlock EVENTS (cliff / period / final / tranche) inside `within=1h…90d` with `window_amount_*` per contract. `rest.tokenFeeShares(mint)` (`GET /tokens/{mint}/fee-shares`) decodes a pump.fun coin's on-chain `SharingConfig` — who its creator fees are redirected to (`share_bps`, `is_admin`, `is_social_pda` for fees earmarked for an X account etc., `redirected_bps`, `social_bps`, `is_default` = 100% to the creator) plus the distribution rollup per recipient and the config change log; `rest.tokenFeeClaims(params?)` (`GET /tokens/fee-claims`) is the fee-event feed (`distribution` with per-address `payouts[]`, `social_claim`, `shares_created` / `updated` / `reset`, `creator_transferred`, `creator_claim` on request), pushed live on the new **`token:fee_claims`** channel (event `token:fee_claim`, typed `TokenFeeClaimStreamEvent`). Honest limits: base-unit amounts are STRINGS and ui / usd / pct are `null` when decimals or price are unknown; **LP locks are NOT included** (token / vesting locks only); **fee-event history starts 2026-08-17**; all five are **PRO+** and **KEYED (v1) only — `msk_` API key, no x402 route.**
 
 > **New in 1.26.0 — live holder census: exact holder count, labelled holders, and pools that are named, not just excluded.** `rest.tokenHolders(mint)` (typed `TokenHoldersResponse`) binds `GET /tokens/{mint}/holders` (PRO+): every token account of the mint read from the ledger at `confirmed` and merged per owner, so `concentration.holder_count` is EXACT (distinct non-zero owners minus pools / bonding curves / burns) — never a trade-derived estimate; it is `null` only when the provider refuses the census for a mega-cap, in which case you get the top-20 view and `source.census_fallback_reason` says so. Each disclosed owner carries our labels (`deployer` / `kol` / `early_buyer` / `bundle` / `bot` / `dump_cluster` — empty means unknown to us, not clean), and `excluded[]` NAMES what was taken out of the circulating denominator: `reason` = `pool` (with `dex` + `pool_address`), `bonding_curve` (pump.fun / LaunchLab), `burn`, or `program_account` only when we genuinely cannot attribute the PDA; `pool_pct` / `burned_pct` / `program_pct` split the exclusion. Amounts are raw u64 **strings**. Disclosure: PRO ranks 1–10, ULTRA 1–50, BUSINESS 1–100 — the maths is tier-independent. Big tokens take 5–30 s upstream: you get `503 holder_scan_in_progress` with `retry_after_seconds: 20` while the scan finishes into the cache, and the retry is instant. **KEYED (v1) — requires an `msk_` API key; the census is not on the x402 rail.**
@@ -279,7 +281,7 @@ const { subscription, webhook_secret } = await rest.firstTouchSubscriptionsCreat
 
 ### Price alerts *(new in 1.9)*
 
-CRUD for token dip/recovery price alerts. Fires via WebSocket (`price:alerts` channel) and/or HMAC-signed webhook when a token's market cap crosses your threshold. PRO=5 rules, ULTRA=25.
+CRUD for token dip/recovery price alerts. Fires via WebSocket (`price_alert:events` channel) and/or HMAC-signed webhook when a token's market cap crosses your threshold. PRO=5 rules, ULTRA=25.
 
 ```ts
 const { alert, webhook_secret } = await rest.priceAlertsCreate({
@@ -379,11 +381,15 @@ Per-account watchlist with historical swap/transfer history.
 const token = await rest.getStreamToken();
 // token.ws_url       — KOL/deployer streaming (Pro/Ultra)
 // token.dex_ws_url   — all-DEX trade stream (Ultra only)
+// token.expires_at   — always null: stream tokens never expire (1.27.1)
+const fresh = await rest.getStreamToken({ rotate: true }); // replace it; old value works 60 s more
 ```
+
+Stream tokens **never expire**: the same token comes back on every call until your subscription lapses or you rotate it. Send it as `Authorization: Bearer <token>` on the WebSocket handshake (`?token=` still works). A `4001` close means "mint again", never a timer.
 
 ### Managed streaming client *(new in 1.10)*
 
-`rest.stream()` handles the token fetch + 24h refresh, auto-reconnect (backoff + jitter), heartbeat liveness, and typed events — just subscribe and listen.
+`rest.stream()` handles the token fetch (the token never expires — `getStreamToken()` is called on every (re)connect), auto-reconnect (backoff + jitter), heartbeat liveness, and typed events — just subscribe and listen.
 
 ```ts
 const stream = rest.stream();
