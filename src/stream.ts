@@ -25,7 +25,8 @@ export type StreamChannel =
   | "sniper:deploys"
   | "token:graduations"
   | "token:locks"
-  | "token:fee_claims";
+  | "token:fee_claims"
+  | "token:surges";
 
 /** Event names delivered on those channels (subscribe to a channel, receive these). */
 export type StreamEventName =
@@ -41,7 +42,9 @@ export type StreamEventName =
   | "sniper:deploy"
   | "token:graduation"
   | "token:lock"
-  | "token:fee_claim";
+  | "token:fee_claim"
+  | "token:surge"
+  | "token:revival";
 
 /** Lifecycle events you can also listen for. */
 export type StreamLifecycleEvent =

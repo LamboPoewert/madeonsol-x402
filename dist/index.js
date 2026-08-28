@@ -762,6 +762,59 @@ export class MadeOnSolREST {
         return this.request("GET", "/tokens/fee-claims", undefined, params);
     }
     /**
+     * v1.28 — Token surges & revivals: token momentum fires, newest first.
+     * `GET /tokens/surges`. Two kinds share one row shape. `surge` — a token
+     * < 30 min old whose market cap runs hard against its LAUNCH MC, in three
+     * tiers that each fire at most once per mint (independent — a token can go
+     * straight to breakout): `early` (≤10 min, ≥$12k, ≥3× launch), `strong`
+     * (≤30 min, ≥$30k, ≥6× launch AND ≥2× the lowest sample of the last 3 min —
+     * it is climbing NOW), `breakout` (≤2 min, ≥$45k, ≥8×). A tier must be
+     * SUSTAINED on the current tick and on a sample ≥10 s older, and nothing
+     * fires before 20 s of age — a one-tick mark (same-slot bundle, routed dust)
+     * is a spike, not a surge. `revival` — a token with no 1-minute trade candle
+     * for ≥24 h that starts trading again, confirmed ONLY by the tape (≥5 buys,
+     * ≥$500 buy volume, MC ≥1.5× the pre-dormancy close, or ≥20 buys / ≥$5k
+     * regardless), never by the price mark; `tier` is null. Hard gates on both:
+     * liquidity ≥$1.5k and ≥2% of MC when known, MC ≤$100B, and the MC gained must
+     * be PAID FOR by buy volume on the tape (a price mark in a spoof pool moves MC
+     * on ~$0). Every row carries the burst `tape` (buys / sells / volume;
+     * `unique_buyers` only where the mint is in token_trades coverage —
+     * `wallet_data_available:false` otherwise, never an inferred zero; `source`
+     * says candles vs wallet_trades, `available:false` = no tape yet), `kol`
+     * (tracked-KOL buyers + names), `early_buyers` (first-20 cohort: bundled,
+     * sold, sniper wallets), `deployer` reputation and `risk_flags[]` — the honest
+     * half (`bundled_launch`, `few_buyers`, `wash_pattern`, `thin_liquidity`,
+     * `cold_deployer`, `sniper_heavy`, `early_buyers_exiting`, `sell_pressure`,
+     * `no_tape_trades`, `no_prior_price`, `mint_authority_active`, `transfer_fee`;
+     * thresholds echoed in `definitions.risk_flags`). Rows ≥65 min old carry the
+     * +1 h `outcome` (MC / peak / low multiples, `priced_after_1h:false` = the
+     * token stopped being priced, not zero); `stats: true` adds per-(kind, tier)
+     * hit-rates over `days` (`up_1h_pct`, `median_peak_multiple`,
+     * `doubled_1h_pct`) — out-of-sample by construction, the fire is recorded
+     * before the outcome exists. Filters are DB-native (no over-fetch): `kind`,
+     * `tier` (400 with kind revival), `mint`, `launchpad`, `deployer_tier`,
+     * `min_mc_usd` / `max_mc_usd`, `min_buys`, `exclude_flags` (comma list; rows
+     * carrying ANY are dropped; unknown flag → 400 + `known_flags`), `only_clean`.
+     * Cursors `since` = `pagination.next_since`, `before` = `next_before`. Pushed
+     * live on the **`token:surges`** WS channel (events `token:surge` /
+     * `token:revival`, typed {@link TokenSurgeStreamEvent} — same object minus
+     * `outcome`; subscribe filters kinds[], tiers[], launchpads[],
+     * exclude_flags[], min_mc_usd / max_mc_usd, deployer_tier[]) and via the
+     * webhook registry. Retention 60 d. **KEYED (v1) — requires an `msk_` API
+     * key; there is no x402 route.** PRO+ — BASIC receives HTTP 403.
+     */
+    async tokensSurges(params) {
+        const q = {};
+        if (params) {
+            for (const [k, v] of Object.entries(params)) {
+                if (v === undefined || v === null)
+                    continue;
+                q[k] = typeof v === "boolean" ? (v ? "1" : "0") : v;
+            }
+        }
+        return this.request("GET", "/tokens/surges", undefined, q);
+    }
+    /**
      * Bulk token rug-risk/safety scoring — up to 50 mints in one call (counts as 1
      * request against quota). Each entry in `tokens` is either a full risk result
      * (same shape as {@link tokenRisk}, plus `as_of`) or `{ mint, error: "not_tracked" }`
