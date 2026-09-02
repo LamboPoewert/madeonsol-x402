@@ -55,6 +55,8 @@ import type {
   TokenSurgesParams,
   TokenSurgesResponse,
   DeployerHistoryResponse,
+  DeployerAsOfResponse,
+  DeployerRewardsResponse,
   DeployerStatsResponse,
   DeployerLeaderboardParams,
   DeployerLeaderboardResponse,
@@ -299,6 +301,9 @@ export type {
   TokenSurgeStreamEvent,
   DeployerHistorySnapshot,
   DeployerHistoryResponse,
+  DeployerAsOfSnapshot,
+  DeployerAsOfResponse,
+  DeployerRewardsResponse,
   DeployerStatsResponse,
   DeployerLeaderboardParams,
   DeployerLeaderboardResponse,
@@ -985,6 +990,31 @@ export class MadeOnSolREST {
   async deployerHistory(wallet: string, opts?: { limit?: number }): Promise<DeployerHistoryResponse> {
     return this.request("GET", `/deployer-hunter/${encodeURIComponent(wallet)}/history`, undefined,
       opts?.limit !== undefined ? { limit: opts.limit } : undefined);
+  }
+
+  /**
+   * A deployer's reputation exactly as it stood on `date` (default today, UTC) —
+   * the latest write-on-change snapshot at or before it, so a backtest sees only
+   * what was knowable then. `snapshot.snapshot_date` can predate `date`
+   * (write-on-change); `snapshot.carried: true` marks that. No snapshot at or
+   * before `date` → `as_of: false, snapshot: null` — nothing is ever synthesized.
+   * `date` must be >= 2026-04-07 and not in the future. PRO/ULTRA only.
+   */
+  async deployerAsOf(wallet: string, opts?: { date?: string }): Promise<DeployerAsOfResponse> {
+    return this.request("GET", `/deployer-hunter/${encodeURIComponent(wallet)}/as-of`, undefined,
+      opts?.date !== undefined ? { date: opts.date } : undefined);
+  }
+
+  /**
+   * pump.fun creator-fee rewards for a wallet, answered two ways that are never
+   * merged: `collected` (what actually reached the wallet — direct vault claims
+   * kept 90 days, social-handle claims, shareholder payouts on any token) and
+   * `attributed` (every payout on the tokens it deployed, split `to_self`/
+   * `to_others` + `redirected_pct`). Works for non-deployers too
+   * (`is_deployer: false`, `attributed` empty). PRO/ULTRA only.
+   */
+  async deployerRewards(wallet: string): Promise<DeployerRewardsResponse> {
+    return this.request("GET", `/deployer-hunter/${encodeURIComponent(wallet)}/rewards`);
   }
 
   /**
